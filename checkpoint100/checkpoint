@@ -1,0 +1,6 @@
+model_checkpoint_path: "my-model-19901"
+all_model_checkpoint_paths: "my-model-19501"
+all_model_checkpoint_paths: "my-model-19601"
+all_model_checkpoint_paths: "my-model-19701"
+all_model_checkpoint_paths: "my-model-19801"
+all_model_checkpoint_paths: "my-model-19901"
