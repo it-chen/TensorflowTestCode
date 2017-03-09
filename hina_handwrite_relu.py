@@ -1,3 +1,5 @@
+#coding=utf-8
+
 import tensorflow as tf
 import random
 import os
@@ -27,22 +29,26 @@ tf.app.flags.DEFINE_boolean('random_contrast', True, "whether to random constras
 tf.app.flags.DEFINE_integer('image_size', 64,
                             """Needs to provide same value as in training.""")
 tf.app.flags.DEFINE_boolean('gray', True, "whethet to change the rbg to gray")
-tf.app.flags.DEFINE_integer('max_steps', 20000, 'the max training steps ')
+tf.app.flags.DEFINE_integer('max_steps', 2000, 'the max training steps ')
 tf.app.flags.DEFINE_integer('eval_steps', 10, "the step num to eval")
 tf.app.flags.DEFINE_integer('save_steps', 100, "the steps to save")
 
-tf.app.flags.DEFINE_integer('char_count',100,'识别char的最大值')
+tf.app.flags.DEFINE_integer('char_count',20,'识别char的最大值')
 
-tf.app.flags.DEFINE_string('checkpoint_dir', './checkpoint100', 'the checkpoint dir')
-tf.app.flags.DEFINE_string('train_data_dir', 'C:/Users/Administrator/PycharmProjects/TensorflowCode/data/train100', 'the train dataset dir')
-tf.app.flags.DEFINE_string('test_data_dir', 'C:/Users/Administrator/PycharmProjects/TensorflowCode/data/test100', 'the test dataset dir')
+tf.app.flags.DEFINE_string('checkpoint_dir', './checkpoint20relu', 'the checkpoint dir')
+tf.app.flags.DEFINE_string('train_data_dir', 'C:\\Users\\lele.chen\\Downloads\\Sample\\little20train', 'the train dataset dir')
+tf.app.flags.DEFINE_string('test_data_dir', 'C:\\Users\\lele.chen\\Downloads\\Sample\\little20test', 'the test dataset dir')
 tf.app.flags.DEFINE_boolean('restore', False, 'whether to restore from checkpoint')
 tf.app.flags.DEFINE_boolean('epoch', 1, 'whether to restore from checkpoint')
 tf.app.flags.DEFINE_boolean('val_batch_size', 128, 'whether to restore from checkpoint')
-tf.app.flags.DEFINE_string('mode', 'inference', 'the run mode')
+tf.app.flags.DEFINE_string('mode', 'train', 'the run mode')
 
 FLAGS = tf.app.flags.FLAGS
 
+dic_kannji = {0: "あ", 1: "い", 2: "う", 3: "え", 4: "お", 5: "な", 6: "に", 7: "ぬ", 8: "ね", 9: "の",
+              10: "さ", 11: "ざ", 12: "き", 13: "ぎ", 14: "ほ", 15: "ぼ", 16: "ぽ", 17: "は", 18: "ば", 19: "ぱ"}
+dic_code = {"あ": 0, "い": 1, "う": 2, "え": 3, "お": 4, "な": 5, "に": 6, "ぬ": 7, "ね": 8, "の": 9,
+            "さ": 10, "ざ": 11, "き": 12, "ぎ": 13, "ほ": 14, "ぼ": 15, "ぽ": 16, "は": 17, "ば": 18, "ぱ": 19}
 
 def get_imagesfile(data_dir):
     """
@@ -55,6 +61,10 @@ def get_imagesfile(data_dir):
     labels = [file_name.split('\\')[-2] for file_name in filenames]
     file_labels = [(file, labels[index]) for index, file in enumerate(filenames)]
     random.shuffle(file_labels)
+
+    # labels = [dic_code[file_name.split('\\')[-1][0]] for file_name in filenames]
+    # file_labels = [(file, labels[index]) for index, file in enumerate(filenames)]
+    # random.shuffle(file_labels)
 
     return file_labels
 
@@ -99,16 +109,48 @@ def batch_data(file_labels, sess, batch_size=128):
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
     return image_batch, label_batch, coord, threads
 
-
+X = tf.placeholder(tf.float32, [None, 64*64])
+Y = tf.placeholder(tf.float32, [None, 20])
+keep_prob = tf.placeholder(tf.float32)
 def network(images, labels=None):
+    x = tf.reshape(X, shape=[-1, 64, 64, 1])
+
+    # 3 conv layers
+    w_c1 = tf.Variable(tf.random_normal([3, 3, 1, 32], stddev=0.01))
+    b_c1 = tf.Variable(tf.zeros([32]))
+    conv1 = tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(x, w_c1, strides=[1, 1, 1, 1], padding='SAME'), b_c1))
+    conv1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+    # conv1 = tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(x, w_c1, strides=[1, 1, 1, 1], padding='SAME'), b_c1))
+    # conv1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+    w_c2 = tf.Variable(tf.random_normal([3, 3, 32, 64], stddev=0.01))
+    b_c2 = tf.Variable(tf.zeros([64]))
+    conv2 = tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(conv1, w_c2, strides=[1, 1, 1, 1], padding='SAME'), b_c2))
+    conv2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+    # conv2 = tf.nn.relu(tf.nn.bias_add(tf.nn.conv2d(conv2, w_c2, strides=[1, 1, 1, 1], padding='SAME'), b_c2))
+    # conv2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+    w_d = tf.Variable(tf.random_normal([8 * 32 * 64, 1024], stddev=0.01))
+    b_d = tf.Variable(tf.zeros([1024]))
+    dense = tf.reshape(conv2, [-1, w_d.get_shape().as_list()[0]])
+    dense = tf.nn.relu(tf.add(tf.matmul(dense, w_d), b_d))
+    dense = tf.nn.dropout(dense, keep_prob)
+
+    w_out = tf.Variable(tf.random_normal([1024, 20], stddev=0.01))
+    b_out = tf.Variable(tf.zeros([20]))
+    out = tf.add(tf.matmul(dense, w_out), b_out)
+
     endpoints = {}
-    conv_1 = slim.conv2d(images, 32, [3, 3], 1, padding='SAME')
-    max_pool_1 = slim.max_pool2d(conv_1, [2, 2], [2, 2], padding='SAME')
-    conv_2 = slim.conv2d(max_pool_1, 64, [3, 3], padding='SAME')
-    max_pool_2 = slim.max_pool2d(conv_2, [2, 2], [2, 2], padding='SAME')
-    flatten = slim.flatten(max_pool_2)
-    out = slim.fully_connected(flatten, FLAGS.char_count, activation_fn=None)
+    # conv_1 = slim.conv2d(images, 32, [3, 3], 1, padding='SAME')
+    # conv_11 = slim.conv2d(conv_1, 32, [3, 3], 1, padding='SAME')
+    # max_pool_1 = slim.max_pool2d(conv_11, [2, 2], [2, 2], padding='SAME')
+    # conv_2 = slim.conv2d(max_pool_1, 64, [3, 3], padding='SAME')
+    # conv_22 = slim.conv2d(conv_2, 64, [3, 3], padding='SAME')
+    # max_pool_2 = slim.max_pool2d(conv_22, [2, 2], [2, 2], padding='SAME')
+    # flatten = slim.flatten(max_pool_2)
+    # out = slim.fully_connected(flatten, FLAGS.char_count, activation_fn=None)
     global_step = tf.Variable(initial_value=0)
+
     if labels is not None:
         loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(out, labels))
         train_op = tf.train.AdamOptimizer(learning_rate=0.0001).minimize(loss, global_step=global_step)
@@ -117,7 +159,7 @@ def network(images, labels=None):
         tf.summary.scalar('accuracy', accuracy)
         merged_summary_op = tf.summary.merge_all()
     output_score = tf.nn.softmax(out)
-    predict_val_top3, predict_index_top3 = tf.nn.top_k(output_score, k=10)
+    predict_val_top3, predict_index_top3 = tf.nn.top_k(output_score, k=3)
 
     endpoints['global_step'] = global_step
     if labels is not None:
@@ -132,68 +174,58 @@ def network(images, labels=None):
     return endpoints
 
 
-def validation():
+def validation(path = FLAGS.test_data_dir):
     # it should be fixed by using placeholder with epoch num in train stage
     sess = tf.Session()
 
-    file_labels = get_imagesfile(FLAGS.test_data_dir)
+    file_labels = get_imagesfile(path)
     test_size = len(file_labels)
+    print("test_size")
     print(test_size)
 
-    val_batch_size = FLAGS.val_batch_size
-    test_steps = test_size / val_batch_size
-    print(test_steps)
-
-    # images, labels, coord, threads= batch_data(file_labels, sess)
     images = tf.placeholder(dtype=tf.float32, shape=[None, 64, 64, 1])
     labels = tf.placeholder(dtype=tf.int32, shape=[None, FLAGS.char_count])
-    # read batch images from file_labels
-    # images_batch = np.zeros([128,64,64,1])
-    # labels_batch = np.zeros([128,FLAGS.char_count])
-    # labels_batch[0][20] = 1
-    #
+
     endpoints = network(images, labels)
     saver = tf.train.Saver()
     ckpt = tf.train.latest_checkpoint(FLAGS.checkpoint_dir)
     if ckpt:
         saver.restore(sess, ckpt)
-        # logger.info("restore from the checkpoint {0}".format(ckpt))
-    # logger.info('Start validation')
     final_predict_val = []
     final_predict_index = []
     groundtruth = []
-    for i in range(test_steps):
-        start = i * val_batch_size
-        end = (i + 1) * val_batch_size
-        images_batch = []
-        labels_batch = []
-        labels_max_batch = []
-        logger.info('=======start validation on {0}/{1} batch========='.format(i, test_steps))
-        for j in range(start, end):
-            image_path = file_labels[j][0]
-            temp_image = Image.open(image_path).convert('L')
-            temp_image = temp_image.resize((FLAGS.image_size, FLAGS.image_size), Image.ANTIALIAS)
-            temp_label = np.zeros([FLAGS.char_count])
-            label = int(file_labels[j][1])
-            # print label
-            temp_label[label] = 1
-            # print "====",np.asarray(temp_image).shape
-            labels_batch.append(temp_label)
-            # print "====",np.asarray(temp_image).shape
-            images_batch.append(np.asarray(temp_image) / 255.0)
-            labels_max_batch.append(label)
-        # print images_batch
-        images_batch = np.array(images_batch).reshape([-1, 64, 64, 1])
-        labels_batch = np.array(labels_batch)
-        batch_predict_val, batch_predict_index = sess.run([endpoints['predict_val_top3'],
-                                                           endpoints['predict_index_top3']],
-                                                          feed_dict={images: images_batch, labels: labels_batch})
-        logger.info('=======validation on {0}/{1} batch end========='.format(i, test_steps))
-        final_predict_val += batch_predict_val.tolist()
-        final_predict_index += batch_predict_index.tolist()
-        groundtruth += labels_max_batch
+    file_paths = []
+    images_batch = []
+    labels_batch = []
+    labels_max_batch = []
+
+    for j in range(0, test_size):
+        image_path = file_labels[j][0]
+        temp_image = Image.open(image_path).convert('L')
+        temp_image = temp_image.resize((FLAGS.image_size, FLAGS.image_size), Image.ANTIALIAS)
+        temp_label = np.zeros([FLAGS.char_count])
+        label = int(file_labels[j][1])
+        # print label
+        temp_label[label] = 1
+        # print "====",np.asarray(temp_image).shape
+        labels_batch.append(temp_label)
+        # print "====",np.asarray(temp_image).shape
+        images_batch.append(np.asarray(temp_image) / 255.0)
+        labels_max_batch.append(label)
+        file_paths.append(image_path)
+    # print images_batch
+    images_batch = np.array(images_batch).reshape([-1, 64, 64, 1])
+    labels_batch = np.array(labels_batch)
+    batch_predict_val, batch_predict_index = sess.run([endpoints['predict_val_top3'],
+                                                       endpoints['predict_index_top3']],
+                                                      feed_dict={images: images_batch, labels: labels_batch})
+
+    final_predict_val += batch_predict_val.tolist()
+    final_predict_index += batch_predict_index.tolist()
+    groundtruth += labels_max_batch
+
     sess.close()
-    return final_predict_val, final_predict_index, groundtruth
+    return final_predict_val, final_predict_index, groundtruth,file_paths
 
 
 # def validation(ne):
@@ -231,8 +263,8 @@ def train():
     saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
     # summary_writer = tf.summary.FileWriter('./log', graph=tf.get_default_graph())
-    train_writer = tf.train.SummaryWriter('./log' + '/train', sess.graph)
-    test_writer = tf.train.SummaryWriter('./log' + '/val')
+    # train_writer = tf.train.SummaryWriter('./log' + '/train', sess.graph)
+    # test_writer = tf.train.SummaryWriter('./log' + '/val')
     start_step = 0
     print('tag1')
 
@@ -253,7 +285,7 @@ def train():
             start_time = time.time()
             _, loss_val, train_summary, step = sess.run(
                 [endpoints['train_op'], endpoints['loss'], endpoints['merged_summary_op'], endpoints['global_step']])
-            train_writer.add_summary(train_summary, step)
+            # train_writer.add_summary(train_summary, step)
             end_time = time.time()
             logger.info("the step {0} takes {1} loss {2}".format(step, end_time - start_time, loss_val))
             if step > FLAGS.max_steps:
@@ -262,7 +294,7 @@ def train():
             if step % FLAGS.eval_steps == 1:
                 accuracy_val, test_summary, step = sess.run(
                     [endpoints['accuracy'], endpoints['merged_summary_op'], endpoints['global_step']])
-                test_writer.add_summary(test_summary, step)
+                # test_writer.add_summary(test_summary, step)
                 logger.info('===============Eval a batch in Train data=======================')
                 # print '===============Eval a batch in Train data======================='
                 # print 'the step {0} accuracy {1}'.format(step, accuracy_val)
@@ -282,7 +314,7 @@ def train():
     sess.close()
 
 
-def eval_metric(final_predict_index, groundtruth):
+def eval_metric(final_predict_index, groundtruth,file_paths):
     assert len(final_predict_index) == len(
         groundtruth), 'final_predict_index, size {0} and groundtruth, size {1} must have the same length'.format(
         len(final_predict_index), len(groundtruth))
@@ -290,6 +322,8 @@ def eval_metric(final_predict_index, groundtruth):
     top3_cnt = 0
     for index, val in enumerate(groundtruth):
         print('val {0}, final_predict_index {1}'.format(val, final_predict_index[index]))
+        # HTML
+        # print("<tr><td><img src='{0}'></td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td></tr>".format(file_paths[index],dic_kannji[val],dic_kannji[final_predict_index[index][0]],dic_kannji[final_predict_index[index][1]],dic_kannji[final_predict_index[index][2]]))
 
         lagrest_predict = final_predict_index[index][0]
         if val == lagrest_predict:
@@ -307,7 +341,7 @@ def run():
     if FLAGS.mode == "train":
         train()
     elif FLAGS.mode == 'validation':
-        final_predict_val, final_predict_index, groundtruth = validation()
+        final_predict_val, final_predict_index, groundtruth,file_paths = validation()
         result = {}
         result['final_predict_val'] = final_predict_val
         result['final_predict_index'] = final_predict_index
@@ -319,24 +353,35 @@ def run():
         pickle.dump(result, f)
         f.close()
         logger.info('Write file ends')
-        eval_metric(final_predict_index, groundtruth)
+        eval_metric(final_predict_index, groundtruth,file_paths)
     elif FLAGS.mode == 'inference':
         print('inference')
-
         # C:\Users\lele.chen\PycharmProjects\TensorFlowCode\data\test\00021
         # image_file = 'C:\\Users\\lele.chen\\PycharmProjects\\TensorFlowCode\\data\\test\\00021\\28717.png'
-
+        # C:\Users\lele.chen\Downloads\Sample\little10png\009
         # C:\Users\lele.chen\PycharmProjects\TensorFlowCode\data\test\00021
-        image_file = 'C:\\Users\\lele.chen\\PycharmProjects\\TensorFlowCode\\data\\test\\00009\\208032.png'
-
-
+        image_file = 'C:\\Users\\lele.chen\\Downloads\\Sample\\Sample\\001\\5.png'
 
         final_predict_val, final_predict_index = inference(image_file)
         logger.info('the result info label {0} predict index {1} predict_val {2}'.format(3, final_predict_index,final_predict_val))
         import char_dic as CHAR_DIC
-        print(CHAR_DIC.dic[final_predict_index[0][0]])
-        print(final_predict_index[0])
+        print(dic_kannji[final_predict_index[0][0]])
+    elif FLAGS.mode == 'A':
+        for dic in dic_kannji.items():
+            testpath = os.path.join(FLAGS.test_data_dir, str(dic[0]))
+            test_file_lables = get_imagesfile(testpath);
+
+            for j in range(0, len(test_file_lables)):
+                _count = 0;
+                test_final_predict_val, test_final_predict_index = inference(test_file_lables[j][0])
+                if(test_final_predict_index[0][0]==test_file_lables[j][1]):
+                    _count = _count+1
+
+            print(dic_kannji[test_final_predict_index[0][0]] + "の正確率は："+_count/len(test_file_lables))
+            print("======================"+str(dic[0])+dic[1]+"==========================")
 
 
 if __name__ == '__main__':
+    print("start time:"+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
     run()
+    print("end time:"+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))

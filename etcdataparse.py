@@ -49,7 +49,7 @@ def read_hiragana():
                     #     moji += 1
     np.savez_compressed("hiragana.npz", ary)
 
-read_hiragana()
+# read_hiragana()
 
 
 
